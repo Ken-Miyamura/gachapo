@@ -1,6 +1,7 @@
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { SymbolView } from "expo-symbols";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -15,7 +16,6 @@ import {
 import Animated, {
   Easing,
   FadeIn,
-  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -23,17 +23,16 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
-import { getRarityColor, getRarityStars } from "@/constants/Colors";
+import { getRarityColor, getRarityGlow, getRarityStars } from "@/constants/Colors";
 import { useGacha } from "@/contexts/GachaContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { GachaItem } from "@/types";
 import { drawGacha } from "@/utils/gacha";
 
 const MAX_DAILY = 10;
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const BUTTON_SIZE = SCREEN_WIDTH * 0.55;
+const { width: SW } = Dimensions.get("window");
+const BUTTON_SIZE = SW * 0.52;
 
-// Rarity-based timing (ms): higher rarity = longer anticipation
 const RARITY_TIMING = { 1: 800, 2: 1400, 3: 2200 };
 
 function hapticBurst(count: number, interval: number) {
@@ -68,21 +67,32 @@ export default function GachaScreen() {
   const [category, setCategory] = useState("すべて");
   const [result, setResult] = useState<GachaItem | null>(null);
   const [pulling, setPulling] = useState(false);
-  const [_phase, setPhase] = useState<"idle" | "spinning" | "revealing" | "done">("idle");
   const [statusText, setStatusText] = useState("ガチャる！");
   const [wasDupe, setWasDupe] = useState(false);
   const pendingResult = useRef<GachaItem | null>(null);
 
-  // Button animation
   const scale = useSharedValue(1);
   const rotation = useSharedValue(0);
   const glowOpacity = useSharedValue(0);
-  // Result card
+  const _glowColor = useSharedValue(0); // 0=cyan, 1=gold
   const resultOpacity = useSharedValue(0);
   const resultScale = useSharedValue(0.3);
   const resultTranslateY = useSharedValue(60);
-  // Flash overlay
   const flashOpacity = useSharedValue(0);
+  // Idle pulse
+  const idlePulse = useSharedValue(1);
+
+  // Start idle breathing animation
+  useEffect(() => {
+    idlePulse.value = withRepeat(
+      withSequence(
+        withTiming(1.03, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
+        withTiming(1, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
+      ),
+      -1,
+      true,
+    );
+  }, [idlePulse]);
 
   const categories = useMemo(() => {
     const cats = new Set(items.map((i) => i.category));
@@ -96,7 +106,10 @@ export default function GachaScreen() {
   const isInCollection = result ? themeCollected.includes(result.id) : false;
 
   const buttonAnimStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }, { rotateZ: `${rotation.value}deg` }],
+    transform: [
+      { scale: pulling ? scale.value : scale.value * idlePulse.value },
+      { rotateZ: `${rotation.value}deg` },
+    ],
   }));
 
   const glowAnimStyle = useAnimatedStyle(() => ({
@@ -115,40 +128,30 @@ export default function GachaScreen() {
   const revealResult = useCallback(
     (drawn: GachaItem) => {
       setResult(drawn);
-      setPhase("done");
       setPulling(false);
       setStatusText("ガチャる！");
-
-      // Result card entrance
       resultOpacity.value = 0;
       resultScale.value = 0.3;
       resultTranslateY.value = 60;
-
       resultOpacity.value = withTiming(1, { duration: 400 });
       resultScale.value = withSpring(1, { damping: 8, stiffness: 100 });
       resultTranslateY.value = withSpring(0, { damping: 12, stiffness: 80 });
 
-      // Flash for ★★★
       if (drawn.rarity === 3) {
         flashOpacity.value = withSequence(
-          withTiming(0.7, { duration: 100 }),
-          withTiming(0, { duration: 500 }),
+          withTiming(0.6, { duration: 100 }),
+          withTiming(0, { duration: 600 }),
         );
-        if (Platform.OS !== "web") {
+        if (Platform.OS !== "web")
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        }
       } else if (drawn.rarity === 2) {
         flashOpacity.value = withSequence(
-          withTiming(0.3, { duration: 100 }),
+          withTiming(0.25, { duration: 100 }),
           withTiming(0, { duration: 300 }),
         );
-        if (Platform.OS !== "web") {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        }
+        if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       } else {
-        if (Platform.OS !== "web") {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        }
+        if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
     },
     [resultOpacity, resultScale, resultTranslateY, flashOpacity],
@@ -158,51 +161,32 @@ export default function GachaScreen() {
     if (!selectedTheme || pulling) return;
     const allowed = await incrementPulls();
     if (!allowed) return;
-
-    // Draw the result now (but don't show yet), excluding collected items
     const drawn = drawGacha(items, category, themeCollected);
     if (!drawn) return;
     pendingResult.current = drawn;
-    // Capture dupe status at draw time (before adding to collection)
     setWasDupe(themeCollected.includes(drawn.id));
-
     setPulling(true);
     setResult(null);
-    setPhase("spinning");
     resultOpacity.value = 0;
 
     const duration = RARITY_TIMING[drawn.rarity as 1 | 2 | 3] || 800;
+    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
-    // Initial press haptic
-    if (Platform.OS !== "web") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    }
-
-    // Phase 1: Shrink
     setStatusText("回転中...");
     scale.value = withTiming(0.75, { duration: 200 });
-
-    // Phase 2: Spin fast (accelerate)
     rotation.value = withSequence(
       withTiming(360 * 2, { duration: duration * 0.5, easing: Easing.in(Easing.quad) }),
-      // Phase 3: Spin slow (decelerate)
       withTiming(360 * 3 + 720, { duration: duration * 0.4, easing: Easing.out(Easing.cubic) }),
-      // Reset
       withTiming(0, { duration: 0 }),
     );
-
-    // Scale wobble during spin
     scale.value = withSequence(
       withTiming(0.75, { duration: 200 }),
       withTiming(1.1, { duration: duration * 0.3 }),
       withTiming(0.95, { duration: duration * 0.2 }),
       withTiming(1.05, { duration: duration * 0.2 }),
-      // Final pop
       withTiming(1.3, { duration: 100 }),
       withSpring(1, { damping: 6, stiffness: 120 }),
     );
-
-    // Glow pulses during spin
     glowOpacity.value = withSequence(
       withTiming(0.6, { duration: 300 }),
       withRepeat(
@@ -212,27 +196,16 @@ export default function GachaScreen() {
       ),
       withTiming(0, { duration: 200 }),
     );
-
-    // Haptic buzz during spin
     hapticBurst(Math.ceil(duration / 150), 150);
-
-    // Status text updates
-    if (drawn.rarity >= 2) {
-      setTimeout(() => setStatusText("おっ...!?"), duration * 0.4);
-    }
-    if (drawn.rarity === 3) {
-      setTimeout(() => setStatusText("✨ キタ！！✨"), duration * 0.7);
-    }
-
-    // Reveal
-    setTimeout(() => {
-      runOnJS(revealResult)(drawn);
-    }, duration + 200);
+    if (drawn.rarity >= 2) setTimeout(() => setStatusText("おっ...!?"), duration * 0.4);
+    if (drawn.rarity === 3) setTimeout(() => setStatusText("✨ キタ！！✨"), duration * 0.7);
+    setTimeout(() => revealResult(drawn), duration + 200);
   }, [
     selectedTheme,
     pulling,
     items,
     category,
+    themeCollected,
     incrementPulls,
     scale,
     rotation,
@@ -257,19 +230,28 @@ export default function GachaScreen() {
 
   const handleOpenMap = useCallback(() => {
     if (result?.latitude && result?.longitude) {
-      const url = `https://www.google.com/maps/search/?api=1&query=${result.latitude},${result.longitude}&query_place_id=${encodeURIComponent(result.text)}`;
-      Linking.openURL(url);
+      Linking.openURL(
+        `https://www.google.com/maps/search/?api=1&query=${result.latitude},${result.longitude}&query_place_id=${encodeURIComponent(result.text)}`,
+      );
     }
   }, [result]);
 
-  // No theme
   if (!selectedTheme) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background }]}>
-        <Text style={{ fontSize: 48, marginBottom: 12 }}>🎰</Text>
-        <Text style={[styles.placeholder, { color: colors.textSecondary }]}>
-          テーマを選んでください
-        </Text>
+        <View
+          style={[
+            styles.emptyIcon,
+            { backgroundColor: colors.card, borderColor: colors.cardBorder },
+          ]}
+        >
+          <SymbolView
+            name={{ ios: "sparkles", android: "auto_awesome", web: "auto_awesome" }}
+            tintColor={colors.primary}
+            size={36}
+          />
+        </View>
+        <Text style={[styles.placeholder, { color: colors.text }]}>テーマを選んでください</Text>
         <Text style={[styles.placeholderSub, { color: colors.textSecondary }]}>
           「テーマ」タブからテーマを選択してね
         </Text>
@@ -289,7 +271,6 @@ export default function GachaScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Flash overlay */}
       <Animated.View
         style={[
           styles.flashOverlay,
@@ -299,16 +280,24 @@ export default function GachaScreen() {
         pointerEvents="none"
       />
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {/* Top bar */}
         <View style={styles.topBar}>
           <TouchableOpacity
-            style={[styles.topBtn, { borderColor: colors.cardBorder }]}
+            style={[
+              styles.topBtn,
+              { backgroundColor: colors.card, borderColor: colors.cardBorder },
+            ]}
             onPress={() => router.push("/")}
           >
             <Text style={[styles.topBtnText, { color: colors.text }]}>‹ テーマへ</Text>
           </TouchableOpacity>
-          <View style={[styles.themeBadge, { borderColor: colors.cardBorder }]}>
+          <View
+            style={[
+              styles.themeBadge,
+              { backgroundColor: colors.card, borderColor: colors.cardBorder },
+            ]}
+          >
             <Text style={styles.themeBadgeIcon}>{selectedTheme.icon}</Text>
             <Text style={[styles.themeBadgeName, { color: colors.text }]}>
               {selectedTheme.name}
@@ -316,7 +305,6 @@ export default function GachaScreen() {
           </View>
         </View>
 
-        {/* Heading */}
         <View style={styles.headingArea}>
           <Text style={[styles.headingTitle, { color: colors.text }]}>いま引くテーマ</Text>
           <Text style={[styles.headingSub, { color: colors.textSecondary }]}>
@@ -324,20 +312,15 @@ export default function GachaScreen() {
           </Text>
         </View>
 
-        {/* Category filter */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.catScroll}
-          contentContainerStyle={styles.catScrollContent}
-        >
+        {/* Categories */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
           {categories.map((cat) => (
             <TouchableOpacity
               key={cat}
               style={[
                 styles.catPill,
                 {
-                  backgroundColor: cat === category ? colors.primary : "transparent",
+                  backgroundColor: cat === category ? colors.primary : colors.card,
                   borderColor: cat === category ? colors.primary : colors.cardBorder,
                 },
               ]}
@@ -355,7 +338,7 @@ export default function GachaScreen() {
           ))}
         </ScrollView>
 
-        {/* Remaining card */}
+        {/* Remaining */}
         <View
           style={[
             styles.remainingCard,
@@ -371,17 +354,19 @@ export default function GachaScreen() {
             </Text>
           </View>
           <View style={styles.remainingRight}>
-            <View style={[styles.resetBadge, { backgroundColor: `${colors.primary}25` }]}>
-              <Text style={[styles.resetText, { color: colors.textSecondary }]}>
-                ✨ 0時にリセット
-              </Text>
+            <View style={[styles.resetBadge, { backgroundColor: colors.cardHighlight }]}>
+              <View style={styles.resetContent}>
+                <SymbolView
+                  name={{ ios: "clock.arrow.circlepath", android: "schedule", web: "schedule" }}
+                  tintColor={colors.textSecondary}
+                  size={14}
+                />
+                <Text style={[styles.resetText, { color: colors.textSecondary }]}>0時リセット</Text>
+              </View>
             </View>
             {remaining <= 0 && __DEV__ && (
               <TouchableOpacity
-                style={[
-                  styles.devResetBtn,
-                  { backgroundColor: `${colors.accent1}30`, borderColor: colors.accent1 },
-                ]}
+                style={[styles.devResetBtn, { borderColor: colors.accent1 }]}
                 onPress={resetPulls}
               >
                 <Text style={[styles.devResetText, { color: colors.accent1 }]}>DEV リセット</Text>
@@ -392,7 +377,6 @@ export default function GachaScreen() {
 
         {/* Gacha button */}
         <View style={styles.gachaArea}>
-          {/* Glow ring behind button */}
           <Animated.View
             style={[
               styles.glowRing,
@@ -403,19 +387,19 @@ export default function GachaScreen() {
           <Animated.View style={buttonAnimStyle}>
             <TouchableOpacity
               style={[
-                styles.gachaButtonOuter,
+                styles.gachaOuter,
                 { borderColor: remaining > 0 ? colors.primary : colors.cardBorder },
               ]}
               onPress={handlePull}
               disabled={remaining <= 0 || pulling}
-              activeOpacity={0.8}
+              activeOpacity={0.85}
             >
               <View
                 style={[
-                  styles.gachaButtonInner,
+                  styles.gachaInner,
                   {
                     backgroundColor: remaining > 0 ? colors.card : colors.cardBorder,
-                    borderColor: remaining > 0 ? colors.primaryLight : colors.cardBorder,
+                    borderColor: remaining > 0 ? colors.cardBorder : "transparent",
                   },
                 ]}
               >
@@ -431,7 +415,7 @@ export default function GachaScreen() {
           </Animated.View>
         </View>
 
-        {/* Result area */}
+        {/* Empty / Pulling / Result */}
         {!result && !pulling && (
           <View
             style={[
@@ -439,7 +423,7 @@ export default function GachaScreen() {
               { backgroundColor: colors.card, borderColor: colors.cardBorder },
             ]}
           >
-            <Text style={{ fontSize: 36, marginBottom: 8 }}>🎁</Text>
+            <Text style={{ fontSize: 32, marginBottom: 8 }}>🎁</Text>
             <Text style={[styles.emptyTitle, { color: colors.primary }]}>まだ何も出ていません</Text>
             <Text style={[styles.emptySub, { color: colors.textSecondary }]}>
               中央のボタンを押すと、テーマに応じたカードが飛び出す！
@@ -447,7 +431,6 @@ export default function GachaScreen() {
           </View>
         )}
 
-        {/* Pulling status */}
         {pulling && !result && (
           <Animated.View
             entering={FadeIn.duration(300)}
@@ -466,78 +449,99 @@ export default function GachaScreen() {
             style={[
               styles.resultCard,
               resultAnimStyle,
-              {
-                backgroundColor: colors.card,
-                borderColor: colors.cardBorder,
-                borderLeftColor: getRarityColor(result.rarity),
-                borderLeftWidth: 4,
-              },
+              getRarityGlow(result.rarity),
+              { backgroundColor: colors.card, borderColor: colors.cardBorder },
             ]}
           >
+            {/* Top rarity strip */}
+            <View
+              style={[styles.resultStrip, { backgroundColor: getRarityColor(result.rarity) }]}
+            />
+
             {wasDupe && (
               <View style={[styles.dupeBadge, { backgroundColor: colors.accent1 }]}>
                 <Text style={styles.dupeText}>ダブり！</Text>
               </View>
             )}
 
-            {/* Rarity reveal */}
-            <View style={styles.rarityRow}>
-              <View
-                style={[styles.rarityBadge, { backgroundColor: getRarityColor(result.rarity) }]}
-              >
-                <Text style={styles.rarityText}>{getRarityStars(result.rarity)}</Text>
-              </View>
-              {result.rarity === 3 && <Text style={styles.rarityLabel}>🌟 レア！</Text>}
-            </View>
-
-            <Text style={[styles.resultText, { color: colors.text }]}>{result.text}</Text>
-            {result.subtitle ? (
-              <Text style={[styles.resultSub, { color: colors.textSecondary }]}>
-                {result.subtitle}
-              </Text>
-            ) : null}
-            {result.source || result.character ? (
-              <Text style={[styles.resultCategory, { color: colors.textSecondary }]}>
-                {[result.source, result.character].filter(Boolean).join(" / ")}
-              </Text>
-            ) : null}
-
-            <View style={styles.resultActions}>
-              <TouchableOpacity
-                style={[
-                  styles.actionBtn,
-                  { backgroundColor: isInCollection ? colors.cardBorder : colors.primary },
-                ]}
-                onPress={handleCollect}
-                disabled={isInCollection}
-              >
-                <Text style={styles.actionBtnText}>
-                  {isInCollection ? "📦 コレクション済み" : "📦 コレクションに追加"}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.actionBtn,
-                  {
-                    backgroundColor: isFav ? colors.accent1 : "transparent",
-                    borderWidth: 1.5,
-                    borderColor: colors.accent1,
-                  },
-                ]}
-                onPress={handleFav}
-              >
-                <Text style={[styles.actionBtnText, { color: isFav ? "#FFF" : colors.accent1 }]}>
-                  {isFav ? "♥ お気に入り済み" : "♥ お気に入り"}
-                </Text>
-              </TouchableOpacity>
-              {selectedTheme.has_location && result.latitude && result.longitude && (
-                <TouchableOpacity
-                  style={[styles.actionBtn, { backgroundColor: colors.accent3 }]}
-                  onPress={handleOpenMap}
+            <View style={styles.resultBody}>
+              <View style={styles.rarityRow}>
+                <View
+                  style={[styles.rarityBadge, { backgroundColor: getRarityColor(result.rarity) }]}
                 >
-                  <Text style={styles.actionBtnText}>📍 マップで見る</Text>
+                  <Text style={styles.rarityText}>{getRarityStars(result.rarity)}</Text>
+                </View>
+                {result.rarity === 3 && <Text style={styles.rarityLabel}>🌟 レア！</Text>}
+              </View>
+
+              <Text style={[styles.resultText, { color: colors.text }]}>{result.text}</Text>
+              {result.subtitle ? (
+                <Text style={[styles.resultSub, { color: colors.textSecondary }]}>
+                  {result.subtitle}
+                </Text>
+              ) : null}
+              {result.source || result.character ? (
+                <Text style={[styles.resultMeta, { color: colors.textSecondary }]}>
+                  {[result.source, result.character].filter(Boolean).join(" / ")}
+                </Text>
+              ) : null}
+
+              <View style={styles.resultActions}>
+                <TouchableOpacity
+                  style={[
+                    styles.actionBtn,
+                    { backgroundColor: isInCollection ? colors.cardBorder : colors.primary },
+                  ]}
+                  onPress={handleCollect}
+                  disabled={isInCollection}
+                >
+                  <View style={styles.actionBtnInner}>
+                    <SymbolView
+                      name={
+                        isInCollection
+                          ? {
+                              ios: "checkmark.circle.fill",
+                              android: "check_circle",
+                              web: "check_circle",
+                            }
+                          : {
+                              ios: "plus.rectangle.on.folder.fill",
+                              android: "library_add",
+                              web: "library_add",
+                            }
+                      }
+                      tintColor="#FFF"
+                      size={16}
+                    />
+                    <Text style={styles.actionBtnText}>
+                      {isInCollection ? "コレクション済み" : "コレクションに追加"}
+                    </Text>
+                  </View>
                 </TouchableOpacity>
-              )}
+                <TouchableOpacity
+                  style={[
+                    styles.actionBtn,
+                    {
+                      backgroundColor: isFav ? colors.accent1 : "transparent",
+                      borderWidth: 1.5,
+                      borderColor: colors.accent1,
+                    },
+                  ]}
+                  onPress={handleFav}
+                >
+                  <Text style={[styles.actionBtnText, { color: isFav ? "#FFF" : colors.accent1 }]}>
+                    {isFav ? "♥ お気に入り済み" : "♥ お気に入り"}
+                  </Text>
+                </TouchableOpacity>
+                {selectedTheme.has_location && result.latitude && result.longitude && (
+                  <TouchableOpacity
+                    style={[styles.actionBtn, { backgroundColor: colors.accent3 }]}
+                    onPress={handleOpenMap}
+                  >
+                    <Text style={styles.actionBtnText}>📍 マップで見る</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
           </Animated.View>
         )}
@@ -548,16 +552,21 @@ export default function GachaScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { padding: 16, paddingBottom: 40 },
+  content: { padding: 20, paddingBottom: 40 },
   center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 32 },
-  placeholder: { fontSize: 18, fontWeight: "600" },
-  placeholderSub: { fontSize: 14, marginTop: 8 },
-
-  // Flash overlay
-  flashOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 100,
+  emptyIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    borderWidth: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
   },
+  placeholder: { fontSize: 18, fontWeight: "700" },
+  placeholderSub: { fontSize: 14, marginTop: 8, opacity: 0.7 },
+
+  flashOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 100 },
 
   topBar: {
     flexDirection: "row",
@@ -565,131 +574,127 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 20,
   },
-  topBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
+  topBtn: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 14, borderWidth: 1 },
   topBtnText: { fontSize: 14, fontWeight: "600" },
   themeBadge: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingVertical: 9,
+    borderRadius: 14,
     borderWidth: 1,
   },
-  themeBadgeIcon: { fontSize: 18, marginRight: 6 },
+  themeBadgeIcon: { fontSize: 16, marginRight: 6 },
   themeBadgeName: { fontSize: 14, fontWeight: "600" },
 
-  headingArea: { marginBottom: 16 },
-  headingTitle: { fontSize: 26, fontWeight: "800", marginBottom: 4 },
-  headingSub: { fontSize: 14, lineHeight: 20 },
+  headingArea: { marginBottom: 18 },
+  headingTitle: { fontSize: 26, fontWeight: "800", marginBottom: 4, letterSpacing: -0.5 },
+  headingSub: { fontSize: 14, lineHeight: 20, opacity: 0.7 },
 
   catScroll: { flexGrow: 0, marginBottom: 16 },
-  catScrollContent: { paddingRight: 16 },
   catPill: {
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 14,
     marginRight: 8,
-    borderWidth: 1.5,
+    borderWidth: 1,
   },
-  catText: { fontSize: 14, fontWeight: "600" },
+  catText: { fontSize: 13, fontWeight: "600" },
 
   remainingCard: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: 16,
-    borderRadius: 16,
+    padding: 18,
+    borderRadius: 18,
     borderWidth: 1,
-    marginBottom: 24,
+    marginBottom: 28,
   },
-  remainingLabel: { fontSize: 13, marginBottom: 4 },
-  remainingCount: { fontSize: 28, fontWeight: "800" },
+  remainingLabel: { fontSize: 12, marginBottom: 4, fontWeight: "500" },
+  remainingCount: { fontSize: 32, fontWeight: "800" },
   remainingRight: { alignItems: "flex-end", gap: 8 },
-  resetBadge: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
-  resetText: { fontSize: 13, fontWeight: "600" },
-  devResetBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 1 },
-  devResetText: { fontSize: 11, fontWeight: "700" },
+  resetBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
+  resetContent: { flexDirection: "row", alignItems: "center", gap: 5 },
+  resetText: { fontSize: 12, fontWeight: "600" },
+  devResetBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1 },
+  devResetText: { fontSize: 10, fontWeight: "700" },
 
-  gachaArea: { alignItems: "center", marginBottom: 24, justifyContent: "center" },
+  gachaArea: { alignItems: "center", marginBottom: 28, justifyContent: "center" },
   glowRing: {
     position: "absolute",
-    width: BUTTON_SIZE + 24,
-    height: BUTTON_SIZE + 24,
-    borderRadius: (BUTTON_SIZE + 24) / 2,
-    borderWidth: 3,
+    width: BUTTON_SIZE + 28,
+    height: BUTTON_SIZE + 28,
+    borderRadius: (BUTTON_SIZE + 28) / 2,
+    borderWidth: 2,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
     shadowRadius: 30,
     elevation: 15,
   },
-  gachaButtonOuter: {
+  gachaOuter: {
     width: BUTTON_SIZE,
     height: BUTTON_SIZE,
     borderRadius: BUTTON_SIZE / 2,
-    borderWidth: 6,
-    padding: 8,
+    borderWidth: 4,
+    padding: 6,
     shadowColor: "#7C3AED",
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.4,
-    shadowRadius: 20,
+    shadowOpacity: 0.35,
+    shadowRadius: 24,
     elevation: 10,
   },
-  gachaButtonInner: {
+  gachaInner: {
     flex: 1,
     borderRadius: BUTTON_SIZE / 2,
-    borderWidth: 2,
+    borderWidth: 1,
     justifyContent: "center",
     alignItems: "center",
   },
-  gachaEmoji: { fontSize: 44, marginBottom: 4 },
-  gachaLabel: { fontSize: 22, fontWeight: "800" },
-  gachaThemeName: { fontSize: 13, marginTop: 4 },
+  gachaEmoji: { fontSize: 40, marginBottom: 4 },
+  gachaLabel: { fontSize: 20, fontWeight: "800", letterSpacing: -0.3 },
+  gachaThemeName: { fontSize: 12, marginTop: 4, opacity: 0.6 },
 
-  // Pulling status
-  pullingStatus: {
-    borderRadius: 16,
-    padding: 20,
-    alignItems: "center",
-    borderWidth: 1,
-  },
+  pullingStatus: { borderRadius: 18, padding: 20, alignItems: "center", borderWidth: 1 },
   pullingText: { fontSize: 18, fontWeight: "700" },
 
-  emptyResult: { borderRadius: 16, padding: 24, alignItems: "center", borderWidth: 1 },
-  emptyTitle: { fontSize: 17, fontWeight: "700", marginBottom: 6 },
-  emptySub: { fontSize: 13, textAlign: "center", lineHeight: 20 },
+  emptyResult: { borderRadius: 18, padding: 28, alignItems: "center", borderWidth: 1 },
+  emptyTitle: { fontSize: 16, fontWeight: "700", marginBottom: 6 },
+  emptySub: { fontSize: 13, textAlign: "center", lineHeight: 20, opacity: 0.7 },
 
   resultCard: {
     width: "100%",
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: 20,
+    overflow: "hidden",
     borderWidth: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 0 },
   },
+  resultStrip: { height: 4, width: "100%" },
+  resultBody: { padding: 22 },
   dupeBadge: {
     position: "absolute",
-    top: 12,
-    right: 12,
+    top: 16,
+    right: 16,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
+    zIndex: 1,
   },
-  dupeText: { color: "#FFF", fontSize: 12, fontWeight: "700" },
-  rarityRow: { flexDirection: "row", alignItems: "center", marginBottom: 12, gap: 8 },
-  rarityBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 10,
+  dupeText: { color: "#FFF", fontSize: 11, fontWeight: "700" },
+  rarityRow: { flexDirection: "row", alignItems: "center", marginBottom: 14, gap: 8 },
+  rarityBadge: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 10 },
+  rarityText: { color: "#FFF", fontSize: 13, fontWeight: "700", letterSpacing: 1 },
+  rarityLabel: { fontSize: 15, fontWeight: "700" },
+  resultText: {
+    fontSize: 20,
+    fontWeight: "700",
+    marginBottom: 6,
+    lineHeight: 28,
+    letterSpacing: -0.3,
   },
-  rarityText: { color: "#FFF", fontSize: 14, fontWeight: "700" },
-  rarityLabel: { fontSize: 16, fontWeight: "700" },
-  resultText: { fontSize: 20, fontWeight: "700", marginBottom: 6, lineHeight: 28 },
-  resultSub: { fontSize: 14, marginBottom: 4, lineHeight: 20 },
-  resultCategory: { fontSize: 13, marginBottom: 16, fontWeight: "500" },
-  resultActions: { gap: 8 },
+  resultSub: { fontSize: 14, marginBottom: 4, lineHeight: 20, opacity: 0.75 },
+  resultMeta: { fontSize: 13, marginBottom: 18, fontWeight: "500", opacity: 0.6 },
+  resultActions: { gap: 10 },
   actionBtn: { paddingVertical: 14, borderRadius: 14, alignItems: "center" },
+  actionBtnInner: { flexDirection: "row", alignItems: "center", gap: 6 },
   actionBtnText: { color: "#FFF", fontSize: 14, fontWeight: "700" },
 });
