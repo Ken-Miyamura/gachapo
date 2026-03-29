@@ -69,6 +69,7 @@ export default function ThemeSelectScreen() {
               { backgroundColor: colors.card, borderColor: colors.cardBorder },
             ]}
             onPress={cycleThemeMode}
+            accessibilityLabel="テーマモード切替"
           >
             <SymbolView
               name={themeSymbol}
@@ -82,6 +83,7 @@ export default function ThemeSelectScreen() {
               { backgroundColor: colors.card, borderColor: colors.cardBorder },
             ]}
             onPress={onRefresh}
+            accessibilityLabel="データを更新"
           >
             <SymbolView
               name={{ ios: "arrow.clockwise", android: "refresh", web: "refresh" }}

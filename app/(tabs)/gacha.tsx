@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Dimensions,
   Linking,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -69,6 +70,7 @@ export default function GachaScreen() {
   const [pulling, setPulling] = useState(false);
   const [statusText, setStatusText] = useState("ガチャる！");
   const [wasDupe, setWasDupe] = useState(false);
+  const [showRates, setShowRates] = useState(false);
   const pendingResult = useRef<GachaItem | null>(null);
 
   const scale = useSharedValue(1);
@@ -306,7 +308,24 @@ export default function GachaScreen() {
         </View>
 
         <View style={styles.headingArea}>
-          <Text style={[styles.headingTitle, { color: colors.text }]}>いま引くテーマ</Text>
+          <View style={styles.headingRow}>
+            <Text style={[styles.headingTitle, { color: colors.text }]}>いま引くテーマ</Text>
+            <TouchableOpacity
+              style={[
+                styles.ratesBtn,
+                { backgroundColor: colors.card, borderColor: colors.cardBorder },
+              ]}
+              onPress={() => setShowRates(true)}
+              accessibilityLabel="排出確率を表示"
+            >
+              <SymbolView
+                name={{ ios: "info.circle", android: "info", web: "info" }}
+                tintColor={colors.textSecondary}
+                size={16}
+              />
+              <Text style={[styles.ratesBtnText, { color: colors.textSecondary }]}>確率</Text>
+            </TouchableOpacity>
+          </View>
           <Text style={[styles.headingSub, { color: colors.textSecondary }]}>
             {selectedTheme.description}
           </Text>
@@ -393,6 +412,7 @@ export default function GachaScreen() {
               onPress={handlePull}
               disabled={remaining <= 0 || pulling}
               activeOpacity={0.85}
+              accessibilityLabel={`ガチャを回す。残り${remaining}回`}
             >
               <View
                 style={[
@@ -546,6 +566,56 @@ export default function GachaScreen() {
           </Animated.View>
         )}
       </ScrollView>
+
+      {/* Rates modal */}
+      <Modal
+        visible={showRates}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowRates(false)}
+      >
+        <TouchableOpacity
+          style={styles.ratesOverlay}
+          activeOpacity={1}
+          onPress={() => setShowRates(false)}
+        >
+          <View
+            style={[
+              styles.ratesSheet,
+              { backgroundColor: colors.card, borderColor: colors.cardBorder },
+            ]}
+          >
+            <View style={[styles.ratesDragHandle, { backgroundColor: colors.textSecondary }]} />
+            <Text style={[styles.ratesTitle, { color: colors.text }]}>排出確率</Text>
+            <View style={styles.ratesTable}>
+              <View style={styles.ratesRow}>
+                <View style={[styles.ratesRarityDot, { backgroundColor: "#22C55E" }]} />
+                <Text style={[styles.ratesLabel, { color: colors.text }]}>★ コモン</Text>
+                <Text style={[styles.ratesValue, { color: colors.accent2 }]}>50%</Text>
+              </View>
+              <View style={styles.ratesRow}>
+                <View style={[styles.ratesRarityDot, { backgroundColor: "#3B82F6" }]} />
+                <Text style={[styles.ratesLabel, { color: colors.text }]}>★★ アンコモン</Text>
+                <Text style={[styles.ratesValue, { color: colors.accent2 }]}>35%</Text>
+              </View>
+              <View style={styles.ratesRow}>
+                <View style={[styles.ratesRarityDot, { backgroundColor: "#F59E0B" }]} />
+                <Text style={[styles.ratesLabel, { color: colors.text }]}>★★★ レア</Text>
+                <Text style={[styles.ratesValue, { color: colors.accent2 }]}>15%</Text>
+              </View>
+            </View>
+            <Text style={[styles.ratesNote, { color: colors.textSecondary }]}>
+              まずレアリティが確率に基づいて決定され、そのレアリティのアイテムからランダムに1つ選ばれます。未取得アイテムが優先されますが、全取得後はダブりが発生します。
+            </Text>
+            <TouchableOpacity
+              style={[styles.ratesCloseBtn, { backgroundColor: colors.primary }]}
+              onPress={() => setShowRates(false)}
+            >
+              <Text style={styles.ratesCloseBtnText}>閉じる</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -588,8 +658,19 @@ const styles = StyleSheet.create({
   themeBadgeName: { fontSize: 14, fontWeight: "600" },
 
   headingArea: { marginBottom: 18 },
+  headingRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   headingTitle: { fontSize: 26, fontWeight: "800", marginBottom: 4, letterSpacing: -0.5 },
   headingSub: { fontSize: 14, lineHeight: 20, opacity: 0.7 },
+  ratesBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  ratesBtnText: { fontSize: 12, fontWeight: "600" },
 
   catScroll: { flexGrow: 0, marginBottom: 16 },
   catPill: {
@@ -697,4 +778,32 @@ const styles = StyleSheet.create({
   actionBtn: { paddingVertical: 14, borderRadius: 14, alignItems: "center" },
   actionBtnInner: { flexDirection: "row", alignItems: "center", gap: 6 },
   actionBtnText: { color: "#FFF", fontSize: 14, fontWeight: "700" },
+
+  // Rates modal
+  ratesOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
+  ratesSheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  ratesDragHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 20,
+    opacity: 0.3,
+  },
+  ratesTitle: { fontSize: 20, fontWeight: "800", marginBottom: 20, letterSpacing: -0.3 },
+  ratesTable: { gap: 14, marginBottom: 20 },
+  ratesRow: { flexDirection: "row", alignItems: "center" },
+  ratesRarityDot: { width: 10, height: 10, borderRadius: 5, marginRight: 10 },
+  ratesLabel: { fontSize: 15, fontWeight: "600", flex: 1 },
+  ratesValue: { fontSize: 18, fontWeight: "800" },
+  ratesNote: { fontSize: 12, lineHeight: 18, marginBottom: 20, opacity: 0.6 },
+  ratesCloseBtn: { paddingVertical: 14, borderRadius: 14, alignItems: "center" },
+  ratesCloseBtnText: { color: "#FFF", fontSize: 15, fontWeight: "700" },
 });
