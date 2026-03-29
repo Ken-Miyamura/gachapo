@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "gachapo",
+    "name": "ガチャポ",
     "slug": "gachapo",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,30 +8,29 @@
     "scheme": "gachapo",
     "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "./assets/images/splash-icon.png",
+      "image": "./assets/images/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#1A0A3E"
     },
     "ios": {
+      "bundleIdentifier": "com.kenmiyamura.gachapo",
+      "buildNumber": "1",
       "supportsTablet": true
     },
     "android": {
+      "package": "com.kenmiyamura.gachapo",
+      "versionCode": 1,
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
-      },
-      "predictiveBackGestureEnabled": false
+        "backgroundColor": "#1A0A3E",
+        "foregroundImage": "./assets/images/icon.png"
+      }
     },
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/icon.png"
     },
-    "plugins": [
-      "expo-router"
-    ],
+    "plugins": ["expo-router"],
     "experiments": {
       "typedRoutes": true
     }
