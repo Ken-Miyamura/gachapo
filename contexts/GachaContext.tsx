@@ -19,6 +19,7 @@ interface GachaContextValue {
   // Collection
   collected: Record<string, string[]>; // theme_id -> item ids
   addToCollection: (themeId: string, itemId: string) => Promise<void>;
+  loadCollected: (themeId: string) => Promise<void>;
 
   // Favorites
   favorites: FavoriteEntry[];
@@ -130,6 +131,11 @@ export function GachaProvider({ children }: { children: React.ReactNode }) {
     setCollected((prev) => ({ ...prev, [themeId]: updated }));
   }, []);
 
+  const loadCollected = useCallback(async (themeId: string) => {
+    const c = await storage.getCollected(themeId);
+    setCollected((prev) => ({ ...prev, [themeId]: c }));
+  }, []);
+
   const loadFavorites = useCallback(async () => {
     const favs = await storage.getFavorites();
     setFavorites(favs);
@@ -176,6 +182,7 @@ export function GachaProvider({ children }: { children: React.ReactNode }) {
         itemsLoading,
         loadItems,
         collected,
+        loadCollected,
         addToCollection,
         favorites,
         toggleFav,
