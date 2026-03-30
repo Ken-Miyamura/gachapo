@@ -86,9 +86,6 @@ export default function CollectionScreen() {
           />
 
           <View style={styles.cardBody}>
-            {/* Card number */}
-            <Text style={[styles.cardNumber, { color: colors.textSecondary }]}>#{item.id}</Text>
-
             <View style={[styles.rarityBadge, { backgroundColor: rarityColor }]}>
               <Text style={styles.rarityText}>{getRarityStars(item.rarity)}</Text>
             </View>
@@ -373,13 +370,6 @@ const styles = StyleSheet.create({
   card: { width: CARD_WIDTH, borderRadius: 18, borderWidth: 1, overflow: "hidden" },
   cardStrip: { height: 3, width: "100%" },
   cardBody: { padding: 14, minHeight: 130 },
-  cardNumber: {
-    fontSize: 10,
-    fontWeight: "600",
-    opacity: 0.4,
-    marginBottom: 8,
-    letterSpacing: 0.5,
-  },
   rarityBadge: {
     alignSelf: "flex-start",
     paddingHorizontal: 10,

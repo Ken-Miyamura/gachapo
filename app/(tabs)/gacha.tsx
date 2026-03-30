@@ -491,7 +491,7 @@ export default function GachaScreen() {
                 >
                   <Text style={styles.rarityText}>{getRarityStars(result.rarity)}</Text>
                 </View>
-                {result.rarity === 3 && <Text style={styles.rarityLabel}>🌟 レア！</Text>}
+                {result.rarity === 3 && <Text style={styles.rarityLabel}>🌟 SR！</Text>}
               </View>
 
               <Text style={[styles.resultText, { color: colors.text }]}>{result.text}</Text>
@@ -590,17 +590,19 @@ export default function GachaScreen() {
             <View style={styles.ratesTable}>
               <View style={styles.ratesRow}>
                 <View style={[styles.ratesRarityDot, { backgroundColor: "#22C55E" }]} />
-                <Text style={[styles.ratesLabel, { color: colors.text }]}>★ コモン</Text>
+                <Text style={[styles.ratesLabel, { color: colors.text }]}>★ N（ノーマル）</Text>
                 <Text style={[styles.ratesValue, { color: colors.accent2 }]}>50%</Text>
               </View>
               <View style={styles.ratesRow}>
                 <View style={[styles.ratesRarityDot, { backgroundColor: "#3B82F6" }]} />
-                <Text style={[styles.ratesLabel, { color: colors.text }]}>★★ アンコモン</Text>
+                <Text style={[styles.ratesLabel, { color: colors.text }]}>★★ R（レア）</Text>
                 <Text style={[styles.ratesValue, { color: colors.accent2 }]}>35%</Text>
               </View>
               <View style={styles.ratesRow}>
                 <View style={[styles.ratesRarityDot, { backgroundColor: "#F59E0B" }]} />
-                <Text style={[styles.ratesLabel, { color: colors.text }]}>★★★ レア</Text>
+                <Text style={[styles.ratesLabel, { color: colors.text }]}>
+                  ★★★ SR（スーパーレア）
+                </Text>
                 <Text style={[styles.ratesValue, { color: colors.accent2 }]}>15%</Text>
               </View>
             </View>
