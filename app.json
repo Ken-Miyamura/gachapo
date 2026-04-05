@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "ガチャポ",
+    "name": "Gachapo Collection",
     "slug": "gachapo",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -15,7 +15,7 @@
     "ios": {
       "bundleIdentifier": "com.kenmiyamura.gachapo",
       "buildNumber": "1",
-      "supportsTablet": true
+      "supportsTablet": false
     },
     "android": {
       "package": "com.kenmiyamura.gachapo",
